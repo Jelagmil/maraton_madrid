@@ -1,0 +1,19 @@
+library(jsonlite)
+library(tidyr)
+library(tibble)
+library(dplyr)
+
+
+total <- tibble()
+
+for(x in seq(0, 9125, by = 50) ){
+  
+  url <- paste0('https://eventresults-api.sporthive.com/api/events/7180618688493574912/races/489022/classifications/search?count=50&offset=',x)
+  
+  clasificacion <- fromJSON(url)
+  clasificacion <- clasificacion[["fullClassifications"]][["classification"]] %>%
+    tidyr::unnest(splits, names_sep=".") %>%
+    tidyr::pivot_wider(id_cols=c('bib','chipTime','name','countryCode'),names_from = c('splits.name'),values_from = c('splits.cumulativeTime'))
+  total <- bind_rows(total,clasificacion)
+  
+}
