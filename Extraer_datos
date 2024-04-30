@@ -1,19 +1,61 @@
-library(jsonlite)
+# Versión 1
+# Cargar las bibliotecas necesarias para el manejo de datos y APIs
+library(jsonlite)  # Para trabajar con JSON
+library(tidyr)     # Para manipular y limpiar datos
+library(tibble)    # Para crear y manipular tibbles, que son una versión moderna de data frames
+library(dplyr)     # Para manipulación de datos
+
+# Crear un tibble vacío para almacenar los resultados acumulados
+total <- tibble()
+
+# Bucle para iterar desde 0 hasta 9125 de 50 en 50
+for(x in seq(0, 9125, by = 50)) {
+  
+  # Construir la URL para la API añadiendo el offset actual en cada iteración del bucle
+  url <- paste0('https://eventresults-api.sporthive.com/api/events/7180618688493574912/races/489022/classifications/search?count=50&offset=', x)
+  
+  # Obtener los datos de la API y convertirlos de JSON a un formato de datos de R (tibble/data.frame)
+  clasificacion <- fromJSON(url)
+  
+  # Preprocesar los datos para extraer y transformar partes específicas
+  clasificacion <- clasificacion[["fullClassifications"]][["classification"]] %>%
+    tidyr::unnest(splits, names_sep=".") %>%  # Desanidar la columna 'splits', separando los nombres con un punto
+    tidyr::pivot_wider(
+      id_cols = c('bib', 'chipTime', 'name', 'countryCode'),  # Definir columnas de identificación
+      names_from = c('splits.name'),  # Usar nombres de los splits para las nuevas columnas
+      values_from = c('splits.cumulativeTime')  # Valores de los tiempos acumulados para rellenar las nuevas columnas
+    )
+  
+  # Combinar el resultado procesado con el tibble total acumulado
+  total <- bind_rows(total, clasificacion)
+  
+}
+
+# Versión 2
 library(tidyr)
 library(tibble)
 library(dplyr)
+library(purrr)
 
+# Definir la secuencia de offsets
+offsets <- seq(0, 9125, by = 50)
 
-total <- tibble()
-
-for(x in seq(0, 9125, by = 50) ){
+# Usar map_df para aplicar una función a cada offset y unir los resultados automáticamente
+total <- purrr::map_df(offsets, function(x) {
+  url <- paste0('https://eventresults-api.sporthive.com/api/events/7180618688493574912/races/489022/classifications/search?count=50&offset=', x)
+  clasificacion <- jsonlite::fromJSON(url)
   
-  url <- paste0('https://eventresults-api.sporthive.com/api/events/7180618688493574912/races/489022/classifications/search?count=50&offset=',x)
-  
-  clasificacion <- fromJSON(url)
-  clasificacion <- clasificacion[["fullClassifications"]][["classification"]] %>%
-    tidyr::unnest(splits, names_sep=".") %>%
-    tidyr::pivot_wider(id_cols=c('bib','chipTime','name','countryCode'),names_from = c('splits.name'),values_from = c('splits.cumulativeTime'))
-  total <- bind_rows(total,clasificacion)
-  
-}
+  # Preprocesar y transformar datos directamente
+  tryCatch({
+    clasificacion[["fullClassifications"]][["classification"]] %>%
+      tidyr::unnest(splits, names_sep=".") %>%
+      tidyr::pivot_wider(
+        id_cols = c('bib', 'chipTime', 'name', 'countryCode'),
+        names_from = c('splits.name'),
+        values_from = c('splits.cumulativeTime')
+      )
+  }, error = function(e) {
+    warning(paste("Error en offset", x, ":", e$message))
+    NULL  # Devuelve NULL en caso de error
+  })
+})
